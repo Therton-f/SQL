@@ -1,0 +1,4 @@
+concat()- used to join different output
+ex. concat(firstname, '.', lastname, '@gmail.com')
+
+IN MYSQL TO SELECT ONLY SPECIFIC 1ST ROWS USE LIMIT 1 - 1ST ROW ONLY, LIMIT 3 - FIRST 3 ROWS ONLY
