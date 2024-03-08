@@ -1,0 +1,240 @@
+
+--cleaning data
+
+
+SELECT *
+FROM PortfolioProject..NashvilleHousing
+
+--------------------------------------------------------Standardize date fromat
+
+SELECT saledate, convert(date,saledate)
+FROM PortfolioProject..NashvilleHousing
+
+--update NashvilleHousing
+--set saledate = convert(date,saledate)
+--converting not working
+
+Alter Table NashvilleHousing
+add SaleDateConverted Date;
+
+update NashvilleHousing
+set SaleDateConverted = convert(date,saledate)
+
+Select saledateconverted
+from PortfolioProject..NashvilleHousing
+
+
+
+
+------------------------------------------------------populate property address data
+
+Select *
+from PortfolioProject..NashvilleHousing
+--where PropertyAddress is null
+order by ParcelID
+
+Select a.ParcelID, a.PropertyAddress, b.ParcelID, b.PropertyAddress
+from PortfolioProject..NashvilleHousing a
+join PortfolioProject..NashvilleHousing b
+	on a.ParcelID=b.ParcelID and a.[UniqueID ]<>b.[UniqueID ]
+where a.PropertyAddress is null
+--we create a table where property id is repeated, and among the duplicate some field have same property address in both parcel id
+--but some field have null property address in 1st instance and some has null property address in 2nd instance
+
+--now with isnull fn, if a.address is null it will take value of b.address
+Select a.ParcelID, a.PropertyAddress, b.ParcelID, b.PropertyAddress, isnull(a.PropertyAddress, b.PropertyAddress)
+from PortfolioProject..NashvilleHousing a
+join PortfolioProject..NashvilleHousing b
+	on a.ParcelID=b.ParcelID and a.[UniqueID ]<>b.[UniqueID ]
+where a.PropertyAddress is null
+
+
+update a
+set propertyaddress = isnull(a.PropertyAddress, b.PropertyAddress)
+from PortfolioProject..NashvilleHousing a
+join PortfolioProject..NashvilleHousing b
+	on a.ParcelID=b.ParcelID and a.[UniqueID ]<>b.[UniqueID ]
+where a.PropertyAddress is null
+
+
+
+----------------------------------Breaking out Address into individual columns (address, city, state)
+
+
+--in given data all address is separated by , which we can use with CHARINDEX which will search for specific value
+--CHARINDEX will give integer value which we can use in substring to choose upto which character
+
+Select PropertyAddress
+from PortfolioProject..NashvilleHousing
+
+--right now value of , is also included in the table
+SELECT Substring(propertyaddress, 1, CHARINDEX(',',propertyaddress)) as address
+from PortfolioProject..NashvilleHousing
+
+--with -1 we will delete the ,
+SELECT Substring(propertyaddress, 1, CHARINDEX(',',propertyaddress)-1) as address
+from PortfolioProject..NashvilleHousing
+
+--now will extract city, city name will start after , so we use +1 and to define last character we use total length
+SELECT 
+  Substring(propertyaddress, 1, CHARINDEX(',',propertyaddress)-1) as address
+, Substring(propertyaddress, CHARINDEX(',',propertyaddress)+1, LEN(propertyaddress)) as city
+from PortfolioProject..NashvilleHousing
+
+---adding address column
+Alter Table NashvilleHousing
+add PropertySplitAddress nvarchar(255);
+
+update NashvilleHousing
+set PropertySplitAddress  = Substring(propertyaddress, 1, CHARINDEX(',',propertyaddress)-1) 
+
+--adding city column
+Alter Table NashvilleHousing
+add PropertySplitCity nvarchar(255);
+
+update NashvilleHousing
+set PropertySplitCity = Substring(propertyaddress, CHARINDEX(',',propertyaddress)+1, LEN(propertyaddress))
+
+
+SELECT *
+FROM PortfolioProject..NashvilleHousing
+
+
+
+---------------------------------------------------------Breaking Owner Address
+
+
+Select owneraddress
+From PortfolioProject..NashvilleHousing
+
+
+--instead of substring and CHARINDEX, use PARSENAME but it will work withonly period(.), so 1st replace , with .
+--PARSENAME work backwords means 1 means last item in value
+Select PARSENAME(Replace(owneraddress,',','.'),1)
+From PortfolioProject..NashvilleHousing
+
+Select 
+PARSENAME(Replace(owneraddress,',','.'),3),
+PARSENAME(Replace(owneraddress,',','.'),2),
+PARSENAME(Replace(owneraddress,',','.'),1)
+From PortfolioProject..NashvilleHousing
+
+--adding columns and owner split address
+
+Alter Table NashvilleHousing
+add OwnerSplitAddress nvarchar(255);
+
+update NashvilleHousing
+set OwnerSplitAddress  = PARSENAME(Replace(owneraddress,',','.'),3) 
+
+
+
+
+Alter Table NashvilleHousing
+add OwnerSplitCity nvarchar(255);
+
+update NashvilleHousing
+set OwnerSplitCity = PARSENAME(Replace(owneraddress,',','.'),2)
+
+
+
+Alter Table NashvilleHousing
+add OwnerSplitState nvarchar(255);
+
+update NashvilleHousing
+set OwnerSplitState = PARSENAME(Replace(owneraddress,',','.'),1)
+
+
+
+Select *
+from PortfolioProject..NashvilleHousing
+
+
+
+---------------------------------------------Chnage Y and N to yes and no in "Sold as Vacant"
+
+Select distinct(SoldAsVacant), count(SoldAsVacant)
+from PortfolioProject..NashvilleHousing
+group by SoldAsVacant
+order by SoldAsVacant
+
+
+
+Select soldasvacant,
+CASE
+	when soldasvacant = 'Y' Then 'Yes'
+	when soldasvacant = 'N' Then 'No'
+	Else soldasvacant
+END
+from PortfolioProject..NashvilleHousing
+
+
+update NashvilleHousing
+Set SoldAsVacant = CASE
+	when soldasvacant = 'Y' Then 'Yes'
+	when soldasvacant = 'N' Then 'No'
+	Else soldasvacant
+END
+
+
+
+
+--------------------------------------------------Remove duplicates
+
+WITH RowNumCTE AS (
+Select *,
+	ROW_NUMBER() over
+	(PARTITION BY ParcelID,  
+				 SalePrice,
+				 SaleDate,
+				 LegalReference
+				 ORDER BY uniqueID ) row_num
+
+from PortfolioProject..NashvilleHousing
+--Order By ParcelID
+)
+
+SELECT *
+From RowNumCTE
+Where row_num > 1
+order by PropertyAddress
+
+
+
+---now delete that duplicate
+
+WITH RowNumCTE AS (
+Select *,
+	ROW_NUMBER() over
+	(PARTITION BY ParcelID,  
+				 SalePrice,
+				 SaleDate,
+				 LegalReference
+				 ORDER BY uniqueID ) row_num
+
+from PortfolioProject..NashvilleHousing
+--Order By ParcelID
+)
+
+Delete 
+From RowNumCTE
+Where row_num > 1
+
+
+
+
+
+
+------------------------------------------------Delete Unused Column
+
+
+Select *
+from PortfolioProject..NashvilleHousing
+
+
+Alter Table PortfolioProject..NashvilleHousing
+Drop Column OwnerAddress, TaxDistrict, PropertyAddress
+
+
+Alter Table PortfolioProject..NashvilleHousing
+Drop Column SaleDate
