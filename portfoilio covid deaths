@@ -1,0 +1,182 @@
+SELECT *
+FROM PortfolioProject..CovidDeaths
+Where continent is not null
+ORDER BY 3,4
+
+--SELECT *
+--FROM PortfolioProject..CovidVaccinations
+--ORDER BY 3,4
+
+--SELECT data that we are going to use
+
+Select Location, date, total_cases, new_cases, total_deaths, population
+from PortfolioProject..CovidDeaths
+order by 1, 2
+
+-- looking at total cases vs total deaths
+--shows likelihood of dying if you contract covid in your country
+
+Select Location, date, total_cases, total_deaths, (total_deaths/total_cases)*100 as Deathpercentange
+from PortfolioProject..CovidDeaths
+Where location = 'india'
+order by 1, 2
+
+
+--looking at total cases vs population
+-- percentage of population got covid
+
+Select Location, date, total_cases, population, (total_cases/population)*100 as infectionpercentange
+from PortfolioProject..CovidDeaths
+--Where location = 'india'
+order by 1, 2
+
+
+--looking at countries with highest infection rate compare to population
+
+Select Location, population, MAX(total_cases) as highestInfectionCount, MAX((total_cases/population))*100 as infectionpercentange
+from PortfolioProject..CovidDeaths
+--Where location = 'india'
+group by location, population
+order by 4 desc
+
+
+
+
+--showing countries with highest deathcount per population
+--cast - in database it is stored as nvarchar and sometimes it gives wrong output, so now it will show as integer
+
+Select Location, MAX(cast(total_deaths as int)) as TotaldeathCount
+from PortfolioProject..CovidDeaths
+Where continent is not null
+--Where location = 'india'
+group by location
+order by 2 desc
+
+--in this grouping location wise it also inclued world and continents like europe as well
+-- so we used where continent is not null, bcz group like asia in location, it will have null entry in continent column
+
+
+
+
+--LETS BREAK THINGS BASED ON CONTINENT
+
+Select Location, MAX(cast(total_deaths as int)) as TotaldeathCount
+from PortfolioProject..CovidDeaths
+Where continent is null
+--Where location = 'india'
+group by Location
+order by 2 desc
+
+--method above gives accurate data of max total deaths in continent
+--below method gives wrong info bcz it will give max total north america death same as max total death in USA and not including canada
+--bcz data of excel contains continets and world name in location column
+
+
+Select continent, MAX(cast(total_deaths as int)) as TotaldeathCount
+from PortfolioProject..CovidDeaths
+--Where continent is null
+--Where location = 'india'
+group by continent
+order by 2 desc
+
+
+
+
+
+--Global Numbers
+
+Select  date, SUM(new_cases) as total_cases, SUM(cast(new_deaths as int )) as Total_deaths, SUM(cast(new_deaths as int))/SUM(new_cases)*100 as Deathpercentange
+from PortfolioProject..CovidDeaths
+--Where location = 'india'
+Where continent is not null
+Group by date
+order by 1, 2
+--above- date wise new cases all over the world
+
+Select  SUM(new_cases) as total_cases, SUM(cast(new_deaths as int )) as Total_deaths, SUM(cast(new_deaths as int))/SUM(new_cases)*100 as Deathpercentange
+from PortfolioProject..CovidDeaths
+--Where location = 'india'
+Where continent is not null
+--Group by date
+order by 1, 2
+
+
+
+--looking at total population vs vaccination
+
+Select dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations
+from PortfolioProject..CovidDeaths as dea
+join PortfolioProject..CovidVaccinations as vac
+	on dea.location = vac.location and dea.date = vac.date
+where dea.continent is not null
+order by 2,3
+
+
+Select dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations
+, SUM(Convert(int,vac.new_vaccinations)) over (partition by dea.location order by dea.location, dea.date) as RollingPeopleVaccinated
+from PortfolioProject..CovidDeaths as dea
+join PortfolioProject..CovidVaccinations as vac
+	on dea.location = vac.location and dea.date = vac.date
+where dea.continent is not null
+order by 2,3
+--instead of cast as int we can use convert int 
+-- in partition by location it will sum the vaccinations for whole country location and will show in every date for that country
+--so in partition by we have to give order of location then ddddate wise sum
+ 
+
+ --use CTE
+
+ With PopvsVac (continent, location, date, population, new_vaccinations, RollingPeopleVaccinated)
+ as
+ (
+ Select dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations
+, SUM(Convert(int,vac.new_vaccinations)) over (partition by dea.location order by dea.location, dea.date) as RollingPeopleVaccinated
+from PortfolioProject..CovidDeaths as dea
+join PortfolioProject..CovidVaccinations as vac
+	on dea.location = vac.location and dea.date = vac.date
+where dea.continent is not null
+--order by 2,3
+--this cant be inside cte it must apply on final table out of cte
+)
+
+Select *, (RollingPeopleVaccinated/population)*100
+from PopvsVac
+
+--with temp table
+
+Drop table if exists #PercentPopulationVaccinated
+Create table #PercentPopulationVaccinated
+(continent nvarchar(255),
+Location nvarchar(255),
+Date datetime,
+Population numeric,
+New_vaccinations numeric,
+RollingPeopleVaccinated numeric
+)
+
+Insert into #PercentPopulationVaccinated
+Select dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations
+, SUM(Convert(int,vac.new_vaccinations)) over (partition by dea.location order by dea.location, dea.date) as RollingPeopleVaccinated
+from PortfolioProject..CovidDeaths as dea
+join PortfolioProject..CovidVaccinations as vac
+	on dea.location = vac.location and dea.date = vac.date
+where dea.continent is not null
+
+Select *, (RollingPeopleVaccinated/population)*100
+from #PercentPopulationVaccinated
+
+
+--creating view to store data fir later visualization
+
+Create view PercentPopulationVaccinated as
+Select dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations
+, SUM(Convert(int,vac.new_vaccinations)) over (partition by dea.location order by dea.location, dea.date) as RollingPeopleVaccinated
+from PortfolioProject..CovidDeaths as dea
+join PortfolioProject..CovidVaccinations as vac
+	on dea.location = vac.location and dea.date = vac.date
+where dea.continent is not null
+ 
+ -- view created will be permanent and wil be used for visualization
+
+Select *
+from PercentPopulationVaccinated
